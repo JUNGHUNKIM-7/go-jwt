@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"example.com/main/src/initializer"
@@ -46,16 +47,17 @@ func Signup(c *gin.Context) {
 		return
 	}
 
-	//get at/rt
-	if atToken, rtToken, ok := makeHash(c, body.Email); ok {
-		at = atToken
-		rt = rtToken
-	} else {
-		c.JSON(http.StatusNotImplemented, gin.H{
-			"err": "cant assign at/rt",
-		})
-		return
-	}
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		wg.Done()
+		at = makeHashTest(c, TokenType("at"), body.Email)
+	}()
+	go func() {
+		wg.Done()
+		rt = makeHashTest(c, TokenType("rt"), body.Email)
+	}()
+	wg.Wait()
 
 	//make doc
 	doc = bson.D{
@@ -117,15 +119,17 @@ func Singin(c *gin.Context) {
 			})
 			return
 		} else {
-			if atoken, rtoken, ok := makeHash(c, body.Email); ok {
-				at = atoken
-				rt = rtoken
-			} else {
-				c.JSON(http.StatusNotImplemented, gin.H{
-					"err": "cant assign at/rt",
-				})
-				return
-			}
+			wg := sync.WaitGroup{}
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				at = makeHashTest(c, TokenType("at"), body.Email)
+			}()
+			go func() {
+				defer wg.Done()
+				rt = makeHashTest(c, TokenType("rt"), body.Email)
+			}()
+			wg.Wait()
 		}
 	} else {
 		c.JSON(http.StatusNotImplemented, gin.H{
@@ -144,6 +148,10 @@ func Singin(c *gin.Context) {
 	})
 }
 
+func Signout(c *gin.Context)  {
+
+}
+
 func RefreshToken(c *gin.Context) {
 
 }
@@ -160,39 +168,45 @@ func updateRtToken(c *gin.Context, email, rt string) {
 	}
 }
 
-func makeHash(c *gin.Context, email string) (string, string, bool) {
-	var (
-		aToken, rToken string
-	)
-	//Promise.all([])
-	//sub
-	at := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"email": email,
-		"exp":   time.Now().Add(time.Hour * 24 * 1).Unix(),
-	})
-	rt := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"email": email,
-		"exp":   time.Now().Add(time.Hour * 24 * 30).Unix(),
-	})
+type TokenType string
 
-	if atTokenString, err := at.SignedString([]byte(os.Getenv("SECRET"))); err != nil {
-		log.Fatal(err)
-		c.JSON(http.StatusNotAcceptable, gin.H{
-			"err": "failed to create at token",
+const (
+	at TokenType = TokenType("at")
+	rt           = TokenType("rt")
+)
+
+func makeHashTest(c *gin.Context, tokenType TokenType, email string) string {
+	switch tokenType {
+	case at:
+		at := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"email": email,
+			"exp":   time.Now().Add(time.Hour * 24 * 1).Unix(),
 		})
-		return "", "", false
-	} else {
-		aToken = atTokenString
-	}
+		if atTokenString, err := at.SignedString([]byte(os.Getenv("SECRET"))); err != nil {
+			log.Fatal(err)
+			c.JSON(http.StatusNotAcceptable, gin.H{
+				"err": "failed to create at token",
+			})
+			return ""
+		} else {
+			return atTokenString
+		}
 
-	if rtTokenString, err := rt.SignedString([]byte(os.Getenv("SECRET"))); err != nil {
-		c.JSON(http.StatusNotAcceptable, gin.H{
-			"err": "failed to create rt token",
+	case rt:
+		rt := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"email": email,
+			"exp":   time.Now().Add(time.Hour * 24 * 30).Unix(),
 		})
-		return "", "", false
-	} else {
-		rToken = rtTokenString
-	}
 
-	return aToken, rToken, true
+		if rtTokenString, err := rt.SignedString([]byte(os.Getenv("SECRET"))); err != nil {
+			c.JSON(http.StatusNotAcceptable, gin.H{
+				"err": "failed to create rt token",
+			})
+			return ""
+		} else {
+			return rtTokenString
+		}
+	}
+_:
+	return ""
 }

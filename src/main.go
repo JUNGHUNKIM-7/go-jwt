@@ -25,13 +25,14 @@ func main() {
 		}
 	}()
 
-	g := r.Group("/auth")
+	auth := r.Group("/auth")
 	{
-		g.GET("", services.Get)
-		g.POST("/signup", services.Signup)
-		g.POST("/signin", services.Singin)
+		auth.GET("", services.Get)
+		auth.POST("/signup", services.Signup)
+		auth.POST("/signin", services.Singin)
 		//need auth
-		g.POST("/refresh", services.RefreshToken)
+		auth.POST("/signout", services.Signout)
+		auth.POST("/refresh", services.RefreshToken)
 	}
 
 	r.Run()
